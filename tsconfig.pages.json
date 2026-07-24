@@ -6,6 +6,7 @@
     "dist",
     "drizzle.config.ts",
     "examples",
+    "vite.config.ts",
     "worker"
   ]
 }
