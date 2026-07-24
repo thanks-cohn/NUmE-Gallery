@@ -4,10 +4,12 @@ A living visual index built around continuously moving image rows. Selecting a w
 
 ## Interaction
 
-1. Scroll through alternating, slowly drifting image rows.
-2. Select an image to open its central family rotunda.
-3. Select the hero again to reveal its source preview.
-4. Use the Back control to reverse one stage at a time.
+- Rows move continuously in alternating directions.
+- Hover a row and use its arrow controls or the keyboard arrow keys.
+- Select an image to open its central family rotunda.
+- Use Previous and Next to move through opened images.
+- Select the hero again to reveal its source preview.
+- Use Back to reverse one stage at a time.
 
 ## Run locally
 
@@ -16,10 +18,6 @@ npm install
 npm run dev
 ```
 
-## Build
+## Deployments
 
-```bash
-npm run build
-```
-
-The project uses React, Next.js-compatible components, Vinext, Vite, and a Cloudflare Worker-compatible production build.
+Pushes to `main` deploy the static build to GitHub Pages through GitHub Actions. The repository also retains its Cloudflare-compatible Vinext build.

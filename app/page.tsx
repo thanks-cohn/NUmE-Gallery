@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Work = {
   id: number;
@@ -38,6 +38,11 @@ export default function Home() {
   const [selected, setSelected] = useState<Work | null>(null);
   const [selectedRow, setSelectedRow] = useState(0);
   const [stage, setStage] = useState<0 | 1 | 2>(0);
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const rowTracks = useRef<Array<HTMLDivElement | null>>([]);
+  const tickerState = useRef(
+    rows.map(() => ({ base: 0, currentNudge: 0, targetNudge: 0, initialized: false })),
+  );
 
   const family = useMemo(
     () => selected ? works.filter((work) => work.family === selected.family && work.id !== selected.id).slice(0, 4) : [],
@@ -47,10 +52,60 @@ export default function Home() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && stage > 0) goBack();
+      if (event.key === "ArrowLeft") {
+        if (stage > 0) selectRelative(-1);
+        else if (hoveredRow !== null) nudgeRow(hoveredRow, -1);
+        else return;
+        event.preventDefault();
+      }
+      if (event.key === "ArrowRight") {
+        if (stage > 0) selectRelative(1);
+        else if (hoveredRow !== null) nudgeRow(hoveredRow, 1);
+        else return;
+        event.preventDefault();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  useEffect(() => {
+    let frame = 0;
+    let lastTime = performance.now();
+    const speeds = [0.42, 0.32, 0.37, 0.29];
+
+    const animate = (time: number) => {
+      const timeScale = Math.min((time - lastTime) / 16.667, 2.5);
+      lastTime = time;
+
+      rowTracks.current.forEach((track, rowIndex) => {
+        if (!track) return;
+        const cycleWidth = track.scrollWidth / 2;
+        if (!cycleWidth) return;
+
+        const state = tickerState.current[rowIndex];
+        const direction = rowIndex % 2 === 0 ? -1 : 1;
+
+        if (!state.initialized) {
+          state.base = direction === 1 ? -cycleWidth : 0;
+          state.initialized = true;
+        }
+
+        state.base += direction * speeds[rowIndex] * timeScale;
+        state.currentNudge += (state.targetNudge - state.currentNudge) * 0.065;
+
+        if (direction === -1 && state.base <= -cycleWidth) state.base += cycleWidth;
+        if (direction === 1 && state.base >= 0) state.base -= cycleWidth;
+
+        track.style.transform = `translate3d(${state.base + state.currentNudge}px, 0, 0)`;
+      });
+
+      frame = requestAnimationFrame(animate);
+    };
+
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   function openWork(work: Work, rowIndex: number) {
     setSelected(work);
@@ -72,6 +127,19 @@ export default function Home() {
     else window.open(selected.link, "_blank", "noopener,noreferrer");
   }
 
+  function nudgeRow(rowIndex: number, direction: -1 | 1) {
+    tickerState.current[rowIndex].targetNudge += direction * 230;
+  }
+
+  function selectRelative(direction: -1 | 1) {
+    if (!selected) return;
+    const currentIndex = works.findIndex((work) => work.id === selected.id);
+    const nextIndex = (currentIndex + direction + works.length) % works.length;
+    const next = works[nextIndex];
+    setSelected(next);
+    setSelectedRow(rows.findIndex((row) => row.some((work) => work.id === next.id)));
+  }
+
   return (
     <main className={`nume ${stage ? "is-open" : ""} ${stage === 2 ? "is-previewing" : ""}`}>
       <header className="site-header">
@@ -87,8 +155,19 @@ export default function Home() {
           <div
             className={`gallery-row row-${rowIndex + 1} ${rowIndex < selectedRow ? "row-before" : rowIndex > selectedRow ? "row-after" : "row-selected"}`}
             key={rowIndex}
+            onPointerEnter={() => setHoveredRow(rowIndex)}
+            onPointerLeave={() => setHoveredRow((current) => current === rowIndex ? null : current)}
+            onFocusCapture={() => setHoveredRow(rowIndex)}
           >
-            <div className="track">
+            <div className="row-controls" aria-label={`Move row ${rowIndex + 1}`}>
+              <button onClick={() => nudgeRow(rowIndex, -1)} aria-label={`Move row ${rowIndex + 1} left`}>←</button>
+              <span>{String(rowIndex + 1).padStart(2, "0")}</span>
+              <button onClick={() => nudgeRow(rowIndex, 1)} aria-label={`Move row ${rowIndex + 1} right`}>→</button>
+            </div>
+            <div
+              className="track"
+              ref={(element) => { rowTracks.current[rowIndex] = element; }}
+            >
               {[...row, ...row].map((work, copyIndex) => (
                 <button
                   className="tile"
@@ -118,6 +197,9 @@ export default function Home() {
           </div>
 
           <div className={`hero-wrap ${selectedRow % 2 ? "preview-left" : "preview-right"}`}>
+            <button className="hero-nav hero-prev" onClick={() => selectRelative(-1)} aria-label="Previous image">
+              <span>←</span><em>Previous</em>
+            </button>
             <button className="hero" onClick={advance} aria-label={stage === 1 ? `Preview website for ${selected.title}` : `Visit website for ${selected.title}`}>
               <img src={selected.image} alt={selected.title} />
               <span className="hero-index">{String(selected.id).padStart(2, "0")}</span>
@@ -144,6 +226,9 @@ export default function Home() {
                 </div>
               </div>
             )}
+            <button className="hero-nav hero-next" onClick={() => selectRelative(1)} aria-label="Next image">
+              <em>Next</em><span>→</span>
+            </button>
           </div>
 
           <div className="family-rail family-rail-right">
