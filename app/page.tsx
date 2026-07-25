@@ -280,7 +280,10 @@ export default function Home() {
 
   function selectRelative(direction: -1 | 1) {
     const move = getRotundaMove(direction);
-    if (move.target) setSelected(move.target);
+    if (move.target) {
+      setSelected(move.target);
+      setSelectedRow(rows.findIndex((row) => row.some((work) => work.id === move.target?.id)));
+    }
   }
 
   const previousMove = getRotundaMove(-1);
@@ -381,8 +384,9 @@ export default function Home() {
       </section>
 
       {selected && stage > 0 && (
+        <>
         <section
-          className="reveal-band"
+          className="reveal-band desktop-rotunda"
           aria-live="polite"
           aria-label={`${selected.title} enlarged view`}
           role="dialog"
@@ -451,6 +455,71 @@ export default function Home() {
           </div>
           <div className="band-line bottom-line" />
         </section>
+
+        <section
+          className={`mobile-rotunda ${stage === 2 ? "is-previewing" : ""}`}
+          aria-live="polite"
+          aria-label={`${selected.title} enlarged mobile view`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="mobile-rotunda-meta">
+            <div>
+              <p>{selected.family} / {selected.year}</p>
+              <h1>{selected.title}</h1>
+            </div>
+            <span>{stage === 1 ? "Selected work" : "Source preview"}</span>
+          </div>
+
+          <div className={`mobile-rotunda-stage ${selectedRow % 2 ? "preview-left" : "preview-right"}`}>
+            <button
+              className="mobile-hero"
+              onClick={advance}
+              aria-label={stage === 1 ? `Preview website for ${selected.title}` : `Visit website for ${selected.title}`}
+            >
+              <img src={selected.image} alt={selected.title} />
+              <span className="mobile-hero-index">{String(selected.id).padStart(2, "0")}</span>
+              <span className="mobile-hero-action">{stage === 1 ? "Open preview" : "Visit source"} <i>↗</i></span>
+            </button>
+
+            {stage === 2 && (
+              <div className="mobile-site-preview">
+                <div className="preview-bar">
+                  <span>{selected.title.toLowerCase().replace(" ", "-")}.studio</span>
+                  <i>•••</i>
+                </div>
+                <div className="preview-page">
+                  <span>NUME / SOURCE {String(selected.id).padStart(2, "0")}</span>
+                  <h2>{selected.title}</h2>
+                  <p>A study in material, atmosphere and quiet movement.</p>
+                  <a href={selected.link} target="_blank" rel="noreferrer">Enter project ↗</a>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <nav className="mobile-rotunda-nav" aria-label="Rotunda navigation">
+            <button
+              className={previousMove.label === "Ascend" ? "is-row-shift" : ""}
+              onClick={() => selectRelative(-1)}
+              aria-label={`${previousMove.label} image`}
+              disabled={!previousMove.target}
+            >
+              <span aria-hidden="true">{previousMove.label === "Ascend" ? "↖" : "←"}</span>
+              <em>{previousMove.label}</em>
+            </button>
+            <button
+              className={nextMove.label === "Descend" ? "is-row-shift" : ""}
+              onClick={() => selectRelative(1)}
+              aria-label={`${nextMove.label} image`}
+              disabled={!nextMove.target}
+            >
+              <em>{nextMove.label}</em>
+              <span aria-hidden="true">{nextMove.label === "Descend" ? "↘" : "→"}</span>
+            </button>
+          </nav>
+        </section>
+        </>
       )}
 
       <footer>
