@@ -56,6 +56,7 @@ export default function Home() {
     pointerId: -1,
     lastX: 0,
     distance: 0,
+    dragging: false,
   });
   const suppressOpenUntil = useRef(0);
 
@@ -164,9 +165,8 @@ export default function Home() {
       pointerId: event.pointerId,
       lastX: event.clientX,
       distance: 0,
+      dragging: false,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.currentTarget.classList.add("is-dragging");
   }
 
   function moveDrag(event: React.PointerEvent<HTMLDivElement>, rowIndex: number) {
@@ -175,6 +175,12 @@ export default function Home() {
     const delta = event.clientX - drag.lastX;
     drag.lastX = event.clientX;
     drag.distance += Math.abs(delta);
+    if (!drag.dragging && drag.distance > 5) {
+      drag.dragging = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.classList.add("is-dragging");
+    }
+    if (!drag.dragging) return;
     const state = tickerState.current[rowIndex];
     state.position += delta;
     state.target = state.position;
@@ -183,8 +189,8 @@ export default function Home() {
   function endDrag(event: React.PointerEvent<HTMLDivElement>, rowIndex: number) {
     const drag = dragState.current;
     if (drag.rowIndex !== rowIndex || drag.pointerId !== event.pointerId) return;
-    if (drag.distance > 5) suppressOpenUntil.current = performance.now() + 180;
-    dragState.current = { rowIndex: -1, pointerId: -1, lastX: 0, distance: 0 };
+    if (drag.dragging) suppressOpenUntil.current = performance.now() + 180;
+    dragState.current = { rowIndex: -1, pointerId: -1, lastX: 0, distance: 0, dragging: false };
     event.currentTarget.classList.remove("is-dragging");
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
