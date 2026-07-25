@@ -32,12 +32,27 @@ test("open rotunda makes the background inert and locks restored scrolling", () 
   assert.match(css, /\.is-open \.gallery \{\s*pointer-events: none/);
 });
 
+test("mobile uses a dedicated grid rotunda while preserving the desktop rotunda", () => {
+  assert.match(page, /className="reveal-band desktop-rotunda"/);
+  assert.match(page, /className=\{`mobile-rotunda/);
+  assert.match(css, /\.mobile-rotunda \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.desktop-rotunda \{ display: none; \}/);
+  assert.match(css, /grid-template-rows: auto minmax\(0, 1fr\) auto/);
+});
+
 test("mobile hero is enlarged, contained, safe-area aware, and uses dvh", () => {
-  assert.match(css, /width: min\(92vw, 620px\)/);
-  assert.match(css, /height: min\(68dvh/);
-  assert.match(css, /\.hero img \{\s*object-fit: contain/);
+  assert.match(css, /height: 100dvh/);
+  assert.match(css, /width: min\(94vw, 680px\)/);
+  assert.match(css, /\.mobile-hero img \{[\s\S]*?object-fit: contain/);
   assert.match(css, /env\(safe-area-inset-top\)/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
+});
+
+test("mobile copy and navigation have dedicated non-overlapping layout rows", () => {
+  assert.match(page, /className="mobile-rotunda-meta"/);
+  assert.match(page, /className="mobile-rotunda-nav"/);
+  assert.match(css, /\.mobile-rotunda-meta \{[\s\S]*?display: flex/);
+  assert.match(css, /\.mobile-rotunda-nav \{[\s\S]*?display: grid/);
 });
 
 test("rotunda preserves previous, next, ascend, and descend boundaries", () => {
