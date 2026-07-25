@@ -59,6 +59,9 @@ export default function Home() {
     dragging: false,
   });
   const suppressOpenUntil = useRef(0);
+  const edgeHoldDelay = useRef<number | null>(null);
+  const edgeHoldRepeat = useRef<number | null>(null);
+  const rotundaOpen = stage > 0;
 
   const family = useMemo(
     () => selected ? works.filter((work) => work.family === selected.family && work.id !== selected.id).slice(0, 4) : [],
@@ -90,13 +93,36 @@ export default function Home() {
   });
 
   useEffect(() => {
-    if (stage === 0) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
+    if (!rotundaOpen) return;
+    const scrollY = window.scrollY;
+    const bodyStyles = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
     };
-  }, [stage]);
+    const rootOverflow = document.documentElement.style.overflow;
+    const rootOverscroll = document.documentElement.style.overscrollBehavior;
+
+    document.documentElement.style.overflow = "hidden";
+    document.documentElement.style.overscrollBehavior = "none";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+
+    return () => {
+      document.documentElement.style.overflow = rootOverflow;
+      document.documentElement.style.overscrollBehavior = rootOverscroll;
+      document.body.style.overflow = bodyStyles.overflow;
+      document.body.style.position = bodyStyles.position;
+      document.body.style.top = bodyStyles.top;
+      document.body.style.width = bodyStyles.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, [rotundaOpen]);
+
+  useEffect(() => () => stopEdgeHold(), []);
 
   useEffect(() => {
     let frame = 0;
@@ -169,6 +195,28 @@ export default function Home() {
 
   function nudgeRow(rowIndex: number, direction: -1 | 1) {
     tickerState.current[rowIndex].target += direction * 230;
+  }
+
+  function stopEdgeHold(event?: React.PointerEvent<HTMLButtonElement>) {
+    event?.stopPropagation();
+    if (edgeHoldDelay.current !== null) window.clearTimeout(edgeHoldDelay.current);
+    if (edgeHoldRepeat.current !== null) window.clearInterval(edgeHoldRepeat.current);
+    edgeHoldDelay.current = null;
+    edgeHoldRepeat.current = null;
+  }
+
+  function startEdgeHold(
+    event: React.PointerEvent<HTMLButtonElement>,
+    rowIndex: number,
+    direction: -1 | 1,
+  ) {
+    event.stopPropagation();
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    stopEdgeHold();
+    edgeHoldDelay.current = window.setTimeout(() => {
+      nudgeRow(rowIndex, direction);
+      edgeHoldRepeat.current = window.setInterval(() => nudgeRow(rowIndex, direction), 135);
+    }, 340);
   }
 
   function startDrag(event: React.PointerEvent<HTMLDivElement>, rowIndex: number) {
@@ -248,7 +296,12 @@ export default function Home() {
         {stage > 0 && <button className="back" onClick={goBack} aria-label="Go back one step"><span>↖</span> Back</button>}
       </header>
 
-      <section className="gallery" aria-label="NUME image gallery">
+      <section
+        className="gallery"
+        aria-label="NUME image gallery"
+        aria-hidden={rotundaOpen}
+        inert={rotundaOpen}
+      >
         {rows.map((row, rowIndex) => (
           <div
             className={`gallery-row row-${rowIndex + 1} ${rowIndex < selectedRow ? "row-before" : rowIndex > selectedRow ? "row-after" : "row-selected"}`}
@@ -293,12 +346,48 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            <button
+              className="mobile-edge-control mobile-edge-left"
+              aria-label={`Move row ${rowIndex + 1} left`}
+              disabled={rotundaOpen}
+              onPointerDown={(event) => startEdgeHold(event, rowIndex, -1)}
+              onPointerUp={stopEdgeHold}
+              onPointerCancel={stopEdgeHold}
+              onPointerLeave={stopEdgeHold}
+              onClick={(event) => {
+                event.stopPropagation();
+                nudgeRow(rowIndex, -1);
+              }}
+            >
+              <span aria-hidden="true">‹</span>
+            </button>
+            <button
+              className="mobile-edge-control mobile-edge-right"
+              aria-label={`Move row ${rowIndex + 1} right`}
+              disabled={rotundaOpen}
+              onPointerDown={(event) => startEdgeHold(event, rowIndex, 1)}
+              onPointerUp={stopEdgeHold}
+              onPointerCancel={stopEdgeHold}
+              onPointerLeave={stopEdgeHold}
+              onClick={(event) => {
+                event.stopPropagation();
+                nudgeRow(rowIndex, 1);
+              }}
+            >
+              <span aria-hidden="true">›</span>
+            </button>
           </div>
         ))}
       </section>
 
       {selected && stage > 0 && (
-        <section className="reveal-band" aria-live="polite">
+        <section
+          className="reveal-band"
+          aria-live="polite"
+          aria-label={`${selected.title} enlarged view`}
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="band-line top-line" />
           <div className="family-rail" aria-label={`${selected.family} collection`}>
             {family.slice(0, 2).map((work, index) => (
