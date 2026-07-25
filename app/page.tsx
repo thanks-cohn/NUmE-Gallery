@@ -68,6 +68,10 @@ export default function Home() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && stage > 0) goBack();
+      if (stage > 0 && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        return;
+      }
       if (event.key === "ArrowLeft") {
         if (stage > 0) selectRelative(-1);
         else if (hoveredRow !== null) nudgeRow(hoveredRow, -1);
@@ -84,6 +88,15 @@ export default function Home() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  useEffect(() => {
+    if (stage === 0) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [stage]);
 
   useEffect(() => {
     let frame = 0;
@@ -197,14 +210,33 @@ export default function Home() {
     }
   }
 
-  function selectRelative(direction: -1 | 1) {
-    if (!selected) return;
-    const currentIndex = works.findIndex((work) => work.id === selected.id);
-    const nextIndex = (currentIndex + direction + works.length) % works.length;
-    const next = works[nextIndex];
-    setSelected(next);
-    setSelectedRow(rows.findIndex((row) => row.some((work) => work.id === next.id)));
+  function getRotundaMove(direction: -1 | 1) {
+    if (!selected) return { target: null, label: direction < 0 ? "Previous" : "Next" };
+
+    const rowIndex = rows.findIndex((row) => row.some((work) => work.id === selected.id));
+    const itemIndex = rows[rowIndex]?.findIndex((work) => work.id === selected.id) ?? -1;
+    if (rowIndex < 0 || itemIndex < 0) return { target: null, label: direction < 0 ? "Previous" : "Next" };
+
+    if (direction < 0) {
+      if (itemIndex > 0) return { target: rows[rowIndex][itemIndex - 1], label: "Previous" };
+      if (rowIndex > 0) return { target: rows[rowIndex - 1].at(-1) ?? null, label: "Ascend" };
+      return { target: null, label: "Ascend" };
+    }
+
+    if (itemIndex < rows[rowIndex].length - 1) {
+      return { target: rows[rowIndex][itemIndex + 1], label: "Next" };
+    }
+    if (rowIndex < rows.length - 1) return { target: rows[rowIndex + 1][0], label: "Descend" };
+    return { target: null, label: "Descend" };
   }
+
+  function selectRelative(direction: -1 | 1) {
+    const move = getRotundaMove(direction);
+    if (move.target) setSelected(move.target);
+  }
+
+  const previousMove = getRotundaMove(-1);
+  const nextMove = getRotundaMove(1);
 
   return (
     <main className={`nume ${stage ? "is-open" : ""} ${stage === 2 ? "is-previewing" : ""}`}>
@@ -277,8 +309,13 @@ export default function Home() {
           </div>
 
           <div className={`hero-wrap ${selectedRow % 2 ? "preview-left" : "preview-right"}`}>
-            <button className="hero-nav hero-prev" onClick={() => selectRelative(-1)} aria-label="Previous image">
-              <span>←</span><em>Previous</em>
+            <button
+              className={`hero-nav hero-prev ${previousMove.label === "Ascend" ? "is-row-shift" : ""}`}
+              onClick={() => selectRelative(-1)}
+              aria-label={`${previousMove.label} image`}
+              disabled={!previousMove.target}
+            >
+              <span>{previousMove.label === "Ascend" ? "↖" : "←"}</span><em>{previousMove.label}</em>
             </button>
             <button className="hero" onClick={advance} aria-label={stage === 1 ? `Preview website for ${selected.title}` : `Visit website for ${selected.title}`}>
               <img src={selected.image} alt={selected.title} />
@@ -306,8 +343,13 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <button className="hero-nav hero-next" onClick={() => selectRelative(1)} aria-label="Next image">
-              <em>Next</em><span>→</span>
+            <button
+              className={`hero-nav hero-next ${nextMove.label === "Descend" ? "is-row-shift" : ""}`}
+              onClick={() => selectRelative(1)}
+              aria-label={`${nextMove.label} image`}
+              disabled={!nextMove.target}
+            >
+              <em>{nextMove.label}</em><span>{nextMove.label === "Descend" ? "↘" : "→"}</span>
             </button>
           </div>
 
