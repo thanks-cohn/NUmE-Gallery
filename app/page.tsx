@@ -33,6 +33,13 @@ const works: Work[] = [
 ];
 
 const rows = [works.slice(0, 5), works.slice(5, 10), works.slice(10, 14), works.slice(14)];
+const ROW_COPIES = 5;
+
+type TickerState = {
+  position: number;
+  target: number;
+  initialized: boolean;
+};
 
 export default function Home() {
   const [selected, setSelected] = useState<Work | null>(null);
@@ -40,9 +47,17 @@ export default function Home() {
   const [stage, setStage] = useState<0 | 1 | 2>(0);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const rowTracks = useRef<Array<HTMLDivElement | null>>([]);
-  const tickerState = useRef(
-    rows.map(() => ({ base: 0, currentNudge: 0, targetNudge: 0, initialized: false })),
+  const rowSegments = useRef<Array<HTMLDivElement | null>>([]);
+  const tickerState = useRef<TickerState[]>(
+    rows.map(() => ({ position: 0, target: 0, initialized: false })),
   );
+  const dragState = useRef({
+    rowIndex: -1,
+    pointerId: -1,
+    lastX: 0,
+    distance: 0,
+  });
+  const suppressOpenUntil = useRef(0);
 
   const family = useMemo(
     () => selected ? works.filter((work) => work.family === selected.family && work.id !== selected.id).slice(0, 4) : [],
@@ -80,24 +95,34 @@ export default function Home() {
 
       rowTracks.current.forEach((track, rowIndex) => {
         if (!track) return;
-        const cycleWidth = track.scrollWidth / 2;
+        const segment = rowSegments.current[rowIndex];
+        const cycleWidth = segment ? segment.offsetWidth + 14 : 0;
         if (!cycleWidth) return;
 
         const state = tickerState.current[rowIndex];
         const direction = rowIndex % 2 === 0 ? -1 : 1;
 
         if (!state.initialized) {
-          state.base = direction === 1 ? -cycleWidth : 0;
+          state.position = -cycleWidth * 2;
+          state.target = state.position;
           state.initialized = true;
         }
 
-        state.base += direction * speeds[rowIndex] * timeScale;
-        state.currentNudge += (state.targetNudge - state.currentNudge) * 0.065;
+        const ambientStep = direction * speeds[rowIndex] * timeScale;
+        state.target += ambientStep;
+        state.position += ambientStep;
+        state.position += (state.target - state.position) * 0.075;
 
-        if (direction === -1 && state.base <= -cycleWidth) state.base += cycleWidth;
-        if (direction === 1 && state.base >= 0) state.base -= cycleWidth;
+        while (state.position <= -cycleWidth * 3) {
+          state.position += cycleWidth;
+          state.target += cycleWidth;
+        }
+        while (state.position >= -cycleWidth) {
+          state.position -= cycleWidth;
+          state.target -= cycleWidth;
+        }
 
-        track.style.transform = `translate3d(${state.base + state.currentNudge}px, 0, 0)`;
+        track.style.transform = `translate3d(${state.position}px, 0, 0)`;
       });
 
       frame = requestAnimationFrame(animate);
@@ -108,6 +133,7 @@ export default function Home() {
   }, []);
 
   function openWork(work: Work, rowIndex: number) {
+    if (performance.now() < suppressOpenUntil.current) return;
     setSelected(work);
     setSelectedRow(rowIndex);
     setStage(1);
@@ -128,7 +154,41 @@ export default function Home() {
   }
 
   function nudgeRow(rowIndex: number, direction: -1 | 1) {
-    tickerState.current[rowIndex].targetNudge += direction * 230;
+    tickerState.current[rowIndex].target += direction * 230;
+  }
+
+  function startDrag(event: React.PointerEvent<HTMLDivElement>, rowIndex: number) {
+    if ((event.target as HTMLElement).closest(".row-controls")) return;
+    dragState.current = {
+      rowIndex,
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      distance: 0,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.classList.add("is-dragging");
+  }
+
+  function moveDrag(event: React.PointerEvent<HTMLDivElement>, rowIndex: number) {
+    const drag = dragState.current;
+    if (drag.rowIndex !== rowIndex || drag.pointerId !== event.pointerId) return;
+    const delta = event.clientX - drag.lastX;
+    drag.lastX = event.clientX;
+    drag.distance += Math.abs(delta);
+    const state = tickerState.current[rowIndex];
+    state.position += delta;
+    state.target = state.position;
+  }
+
+  function endDrag(event: React.PointerEvent<HTMLDivElement>, rowIndex: number) {
+    const drag = dragState.current;
+    if (drag.rowIndex !== rowIndex || drag.pointerId !== event.pointerId) return;
+    if (drag.distance > 5) suppressOpenUntil.current = performance.now() + 180;
+    dragState.current = { rowIndex: -1, pointerId: -1, lastX: 0, distance: 0 };
+    event.currentTarget.classList.remove("is-dragging");
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   function selectRelative(direction: -1 | 1) {
@@ -158,6 +218,10 @@ export default function Home() {
             onPointerEnter={() => setHoveredRow(rowIndex)}
             onPointerLeave={() => setHoveredRow((current) => current === rowIndex ? null : current)}
             onFocusCapture={() => setHoveredRow(rowIndex)}
+            onPointerDown={(event) => startDrag(event, rowIndex)}
+            onPointerMove={(event) => moveDrag(event, rowIndex)}
+            onPointerUp={(event) => endDrag(event, rowIndex)}
+            onPointerCancel={(event) => endDrag(event, rowIndex)}
           >
             <div className="row-controls" aria-label={`Move row ${rowIndex + 1}`}>
               <button onClick={() => nudgeRow(rowIndex, -1)} aria-label={`Move row ${rowIndex + 1} left`}>←</button>
@@ -168,17 +232,27 @@ export default function Home() {
               className="track"
               ref={(element) => { rowTracks.current[rowIndex] = element; }}
             >
-              {[...row, ...row].map((work, copyIndex) => (
-                <button
-                  className="tile"
-                  key={`${work.id}-${copyIndex}`}
-                  onClick={() => openWork(work, rowIndex)}
-                  aria-label={`Open ${work.title}`}
-                  tabIndex={copyIndex >= row.length ? -1 : 0}
+              {Array.from({ length: ROW_COPIES }, (_, copyIndex) => (
+                <div
+                  className="track-segment"
+                  key={copyIndex}
+                  ref={copyIndex === 0 ? (element) => { rowSegments.current[rowIndex] = element; } : undefined}
+                  aria-hidden={copyIndex === 2 ? undefined : true}
                 >
-                  <img src={work.image} alt="" loading={rowIndex > 1 ? "lazy" : "eager"} />
-                  <span className="tile-meta"><b>{work.title}</b><em>{String(work.id).padStart(2, "0")}</em></span>
-                </button>
+                  {row.map((work, itemIndex) => (
+                    <button
+                      className={`tile tile-${itemIndex}`}
+                      key={`${work.id}-${copyIndex}`}
+                      onClick={() => openWork(work, rowIndex)}
+                      aria-label={`Open ${work.title}`}
+                      tabIndex={copyIndex === 2 ? 0 : -1}
+                      draggable={false}
+                    >
+                      <img src={work.image} alt="" loading={rowIndex > 1 ? "lazy" : "eager"} draggable={false} />
+                      <span className="tile-meta"><b>{work.title}</b><em>{String(work.id).padStart(2, "0")}</em></span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
